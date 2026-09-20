@@ -49,8 +49,18 @@ function approxTokens(text) {
 }
 
 function toDuckMessage(m) {
-  if (m.role === 'assistant' && typeof m.content === 'string') {
-    return { role: m.role, content: m.content };
+  if (m.role === 'assistant') {
+    return {
+      role: 'assistant',
+      content: '',
+      parts: [{ type: 'text', text: m.content }],
+    };
+  }
+  if (m.role === 'system') {
+    return {
+      role: 'user',
+      content: [{ type: 'text', text: m.content }],
+    };
   }
   return { role: m.role, content: [{ type: 'text', text: m.content }] };
 }
@@ -215,7 +225,8 @@ async function handler(req, res) {
         return openAiError(res, 400, 'invalid JSON body', 'invalid_request_error');
       }
       const hash = parsed.hash || parsed.token || parsed['x-vqd-hash-1'] || null;
-      setRuntimeHash(hash);
+      const cookie = parsed.cookie || parsed.cookies || parsed['x-ddg-cookie'] || null;
+      setRuntimeHash(hash, cookie);
       return json(res, 200, { ok: true, token: tokenStatus() });
     }
   }

@@ -16,12 +16,14 @@ const state = {
   solvedAt: 0,
   inflight: null,
   runtimePinned: null,
+  runtimeCookie: null,
   feVersion: null,
   feVersionAt: 0,
 };
 
-export function setRuntimeHash(hash) {
+export function setRuntimeHash(hash, cookie) {
   state.runtimePinned = hash && typeof hash === 'string' && hash.trim() ? hash.trim() : null;
+  state.runtimeCookie = cookie && typeof cookie === 'string' && cookie.trim() ? cookie.trim() : null;
   state.hash = null;
   state.inflight = null;
 }
@@ -42,6 +44,9 @@ export function tokenStatus() {
           ? 'auto'
           : 'uninitialized',
     hash_preview: active ? `${active.slice(0, 16)}... (${active.length} chars)` : null,
+    cookie: state.runtimeCookie
+      ? `${state.runtimeCookie.slice(0, 40)}... (${state.runtimeCookie.length} chars)`
+      : null,
     vqd: state.vqd,
     fe_version: state.feVersion,
     solved_at: state.solvedAt ? new Date(state.solvedAt).toISOString() : null,
@@ -70,20 +75,40 @@ async function getFeVersion() {
 }
 
 function feSignals() {
-  return Buffer.from(JSON.stringify({ start: Date.now(), events: [], end: 0 }), 'utf8').toString('base64');
+  const start = Date.now();
+  const end = start + Math.floor(Math.random() * 150000) + 60000;
+  return Buffer.from(JSON.stringify({ start, events: [], end }), 'utf8').toString('base64');
+}
+
+function journeyId() {
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function browserHeaders(model) {
+  return {
+    'Accept-Language': 'ru-IN,ru-RU;q=0.9,ru;q=0.8,en-US;q=0.7,en;q=0.6',
+    Dnt: '1',
+    Priority: 'u=1, i',
+    'Sec-Ch-Ua': '"Google Chrome";v="153", "Not_A Brand";v="8", "Chromium";v="153"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'empty',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Site': 'same-origin',
+  };
 }
 
 async function fetchChallenge() {
-  const res = await fetch(`${config.baseUrl}/duckchat/v1/status`, {
-    headers: {
-      'User-Agent': config.userAgent,
-      'x-vqd-accept': '1',
-      'Cache-Control': 'no-store',
-      Accept: '*/*',
-      Origin: 'https://duck.ai',
-      Referer: 'https://duck.ai/',
-    },
-  });
+  const headers = {
+    'User-Agent': config.userAgent,
+    'x-vqd-accept': '1',
+    'Cache-Control': 'no-store',
+    Accept: '*/*',
+    Origin: 'https://duck.ai',
+    Referer: 'https://duck.ai/',
+  };
+  if (state.runtimeCookie) headers.Cookie = state.runtimeCookie;
+  const res = await fetch(`${config.baseUrl}/duckchat/v1/status`, { headers });
   if (!res.ok) {
     throw new UpstreamError(502, `status request failed: ${res.status}`);
   }
@@ -146,28 +171,38 @@ export async function* chatStream(model, messages) {
 
     let res;
     try {
+      const headers = {
+        'User-Agent': config.userAgent,
+        'x-vqd-hash-1': hash,
+        'x-fe-version': feVersion,
+        'x-fe-signals': feSignals(),
+        'x-ddg-journey-id': journeyId(),
+        'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
+        Origin: 'https://duck.ai',
+        Referer: 'https://duck.ai/',
+        ...browserHeaders(model),
+      };
+      if (state.runtimeCookie) headers.Cookie = state.runtimeCookie;
       res = await fetch(`${config.baseUrl}/duckchat/v1/chat`, {
         method: 'POST',
-        headers: {
-          'User-Agent': config.userAgent,
-          'x-vqd-hash-1': hash,
-          'x-fe-version': feVersion,
-          'x-fe-signals': feSignals(),
-          'x-ddg-journey-id': crypto.randomUUID(),
-          'Content-Type': 'application/json',
-          Accept: 'text/event-stream',
-          Origin: 'https://duck.ai',
-          Referer: 'https://duck.ai/',
-        },
+        headers,
         body: JSON.stringify({
           model,
+          metadata: {
+            toolChoice: {
+              NewsSearch: false,
+              VideosSearch: false,
+              LocalSearch: false,
+              WeatherForecast: false,
+            },
+          },
           messages,
-          canUseTools: false,
-          canUseApproxLocation: false,
-          canDelegateImageGeneration: false,
-          canUseWebSearch: false,
-          canUploadFiles: false,
-          canShowGreeting: false,
+          canUseTools: true,
+          reasoningEffort: 'none',
+          canUseApproxLocation: null,
+          canDelegateImageGeneration: null,
+          canShowGreeting: true,
         }),
       });
     } catch (err) {
