@@ -186,8 +186,7 @@ function extractResultsWithJsdom(jsCode) {
   });
 }
 
-export async function generateVqdHash(challengeBase64) {
-  const startedAt = Date.now();
+export async function generateVqdHash(challengeBase64, { entryScript = 'entry.duckai.js' } = {}) {
   if (!challengeBase64 || typeof challengeBase64 !== 'string') {
     throw new VqdHashError('empty challenge');
   }
@@ -215,12 +214,15 @@ export async function generateVqdHash(challengeBase64) {
     crypto.createHash('sha256').update(String(value), 'utf8').digest('base64')
   );
 
-  // mirror the frontend solver: it merges origin/stack/duration into meta
+  // mirror the frontend solver: it merges origin/stack/duration into meta.
+  // stack references the real entry bundle with the observed frame offsets;
+  // duration is kept single-digit ms like real Chrome runs.
+  const bundleUrl = `https://duck.ai/dist/duckai-dist/${entryScript}`;
   results.meta = {
     ...results.meta,
     origin: 'https://duck.ai',
-    stack: 'Error\n    at l (https://duck.ai/dist/duckai-dist/entry.duckai.js:2:28118)\n    at a (https://duck.ai/dist/duckai-dist/entry.duckai.js:2:27450)',
-    duration: String(Math.max(1, Date.now() - startedAt)),
+    stack: `Error\n    at l (${bundleUrl}:2:1879521)\n    at async ${bundleUrl}:2:1656470`,
+    duration: String(1 + Math.floor(Math.random() * 8)),
   };
 
   return Buffer.from(JSON.stringify(results), 'utf8').toString('base64');

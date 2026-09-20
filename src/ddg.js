@@ -19,6 +19,7 @@ const state = {
   runtimeCookie: null,
   feVersion: null,
   feVersionAt: 0,
+  entryScript: 'entry.duckai.js',
 };
 
 export function setRuntimeHash(hash, cookie) {
@@ -63,6 +64,8 @@ async function getFeVersion() {
     const html = await res.text();
     const tag = html.match(/data-version-tag="([^"]*)"/)?.[1];
     const sha = html.match(/data-version-sha="([^"]*)"/)?.[1];
+    const entry = html.match(/\/dist\/duckai-dist\/(entry\.duckai\.[a-f0-9]+\.js)/)?.[1];
+    if (entry) state.entryScript = entry;
     if (tag) {
       state.feVersion = `${tag}-${sha || 'hash'}`;
       state.feVersionAt = Date.now();
@@ -122,7 +125,7 @@ async function fetchChallenge() {
 
 async function solveHash() {
   const challenge = await fetchChallenge();
-  const hash = await generateVqdHash(challenge);
+  const hash = await generateVqdHash(challenge, { entryScript: state.entryScript });
   state.hash = hash;
   state.solvedAt = Date.now();
   return hash;
@@ -220,7 +223,7 @@ export async function* chatStream(model, messages) {
         invalidateHash();
         if (inlineChallenge && !state.inflight) {
           state.inflight = (async () => {
-            const solved = await generateVqdHash(inlineChallenge);
+            const solved = await generateVqdHash(inlineChallenge, { entryScript: state.entryScript });
             state.hash = solved;
             state.solvedAt = Date.now();
             return solved;
