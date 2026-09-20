@@ -1,0 +1,25 @@
+{
+  "name": "duckgo",
+  "version": "1.0.0",
+  "description": "Duck.ai (DuckDuckGo AI Chat) to OpenAI-compatible API proxy",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js"
+  },
+  "engines": {
+    "node": ">=18.17"
+  },
+  "keywords": [
+    "duckduckgo",
+    "duck.ai",
+    "openai-api",
+    "free-api",
+    "reverse-engineering",
+    "proxy"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "jsdom": "^27.0.0"
+  }
+}

@@ -1,0 +1,11 @@
+services:
+  duckgo:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - PORT=8080
+      - BASE_URL=https://duckduckgo.com
+      - TOKEN=${TOKEN:-}
+      - DUCK_HASH=${DUCK_HASH:-}
+    restart: unless-stopped
