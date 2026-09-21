@@ -269,8 +269,11 @@ function handleStreamFailure(res, err, id, created, model, partialContent) {
 }
 
 async function forwardKilo(req, res, subpath) {
-  if (!process.env.KILO_API_KEY) {
-    return openAiError(res, 503, 'KILO_API_KEY is not configured on the server', 'api_error');
+  const pinned = process.env.KILO_API_KEY || null;
+  const auth = req.headers.authorization || '';
+  const passthrough = !pinned && /^Bearer .+/.test(auth) ? auth : null;
+  if (!pinned && !passthrough) {
+    return openAiError(res, 503, 'kilo relay: no bearer token provided and KILO_API_KEY is not configured on the server', 'api_error');
   }
 
   const chunks = [];
@@ -287,7 +290,7 @@ async function forwardKilo(req, res, subpath) {
   const headers = {
     'Content-Type': req.headers['content-type'] || 'application/json',
     Accept: req.headers['accept'] || '*/*',
-    Authorization: `Bearer ${process.env.KILO_API_KEY}`,
+    Authorization: pinned ? `Bearer ${pinned}` : passthrough,
   };
 
   let upstream;
