@@ -268,6 +268,52 @@ function handleStreamFailure(res, err, id, created, model, partialContent) {
   openAiError(res, err instanceof UpstreamError ? err.status : 502, err.message);
 }
 
+async function forwardKilo(req, res, subpath) {
+  if (!process.env.KILO_API_KEY) {
+    return openAiError(res, 503, 'KILO_API_KEY is not configured on the server', 'api_error');
+  }
+
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > MAX_BODY) {
+      return openAiError(res, 413, 'payload too large', 'invalid_request_error');
+    }
+    chunks.push(chunk);
+  }
+  const body = Buffer.concat(chunks);
+
+  const headers = {
+    'Content-Type': req.headers['content-type'] || 'application/json',
+    Accept: req.headers['accept'] || '*/*',
+    Authorization: `Bearer ${process.env.KILO_API_KEY}`,
+  };
+
+  let upstream;
+  try {
+    upstream = await fetch(`https://api.kilo.ai/api/gateway/${subpath}`, {
+      method: req.method,
+      headers,
+      body: ['GET', 'HEAD'].includes(req.method) ? undefined : body,
+    });
+  } catch (err) {
+    return openAiError(res, 502, `kilo upstream request failed: ${err.message}`);
+  }
+
+  res.writeHead(upstream.status, {
+    'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+    'Cache-Control': 'no-cache',
+    'Access-Control-Allow-Origin': '*',
+  });
+  if (upstream.body) {
+    for await (const chunk of upstream.body) {
+      res.write(chunk);
+    }
+  }
+  res.end();
+}
+
 async function handler(req, res) {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
   const path = url.pathname.replace(/\/+$/, '') || '/';
@@ -321,6 +367,12 @@ async function handler(req, res) {
     const body = await readBody(req).catch(() => null);
     if (body === null) return openAiError(res, 413, 'payload too large', 'invalid_request_error');
     return handleChatCompletions(req, res, body);
+  }
+
+  if (path === '/kilo' || path.startsWith('/kilo/')) {
+    if (req.method === 'OPTIONS') return res.end();
+    const subpath = path === '/kilo' ? '' : path.slice('/kilo/'.length).replace(/\/+$/, '');
+    return forwardKilo(req, res, subpath);
   }
 
   return openAiError(res, 404, `no route for ${req.method} ${path}`, 'invalid_request_error');
